@@ -1,6 +1,6 @@
 # BST_270_individual_project
 
-This repository contains my attempt to reproduce tables/figures from FiveThirtyEight's [The Ultimate Halloween Candy Power Ranking](https://fivethirtyeight.com/videos/the-ultimate-halloween-candy-power-ranking/).
+This repository contains my attempt to reproduce tables from FiveThirtyEight's [The Ultimate Halloween Candy Power Ranking](https://fivethirtyeight.com/videos/the-ultimate-halloween-candy-power-ranking/).
 
 ## Project Structure
 
