@@ -1,0 +1,156 @@
+---
+title: "BST 270: Individual Project"
+subtitle: "Reproducible Data Science: Candy Rank (FiveThirtyEight)"
+author: "Phuc Vu"
+format: html
+---
+
+## Introduction
+
+This notebook is my individual project of BST 270: Reproducible Data Science, taken Winter 2025.
+
+### Motivations and Reproducibility
+
+My goal is to reproduce two tables from FiveThirtyEight's [The Ultimate Halloween Candy Power Ranking](https://fivethirtyeight.com/videos/the-ultimate-halloween-candy-power-ranking/).
+
+Specifically, I aim to reproduce the two tables provided on the ranking and the importance of components of candies when they compete again each other for the best candy title. The data used for this notebook is the results of 269,000 randomly generated matchups from 8,371 different IP addresses to decide which candy do people love. The data is stored at `../data/candy-data.csv`.
+
+## Setup
+
+The requried libraries for this notebooks are formattable and htmltools. We then downloaded and saved the data from FiveThirtyEight's official GitHub repository: [fivethirtyeight/data/candy-power-ranking](https://github.com/fivethirtyeight/data/blob/master/candy-power-ranking) at `../data/candy-data.csv`
+
+
+```{r}
+#| message: false
+# check if the environment has the required libraries
+if (!requireNamespace("formattable", quietly = TRUE)) {
+    install.packages("formattable")
+}
+
+if (!requireNamespace("htmltools", quietly = TRUE)) {
+    install.packages("htmltools")
+}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+    install.packages("tidyverse")
+}
+# Loading necessary libraries
+library(formattable)
+library(htmltools)
+library(tidyverse)
+
+# Specify the url of the candy data
+url <- "https://raw.githubusercontent.com/fivethirtyeight/data/master/candy-power-ranking/candy-data.csv"
+# read in the candy data
+candy_data <- read.csv(url)
+# store the candy data in the data folwer
+write.csv(candy_data, file='../data/candy-data.csv', quote=FALSE, row.names = FALSE)
+```
+
+
+## Reproducing Tables
+
+### Table 1: How often did a fun-sized candy of a given type win its matchups against the rest of the field?
+
+The first table demonstrates the winning rate of a candy against the other candies.
+
+
+
+```{r}
+table_1<-candy_data|>
+  mutate(RK=rank(-winpercent), # use winpercent as ranking, with highest winpercent to be rank 1
+         winpercent=round(winpercent,1))|> # round up the winpercent for aesthetic
+  select(RK,competitorname,winpercent)|> # select only 3 columns to recreate the table
+  arrange(desc(winpercent))|># rearrange the rows from the highest to lowest win percent
+  rename(CANDY=competitorname,`WIN PERCENT`=winpercent)|> # rename the columns to match the table
+  # in the original article
+           formattable(list( # use formattable to add the color bar based on the winpercent
+             `WIN PERCENT` = formatter("span",
+                                       style = x ~ style(
+                                         display = "flex",  # Use flex layout for alignment
+                                         "align-items" = "center",         # Align percentage and bar vertically
+                                         "gap" = "10px"                    # Add spacing between number and bar
+    ),
+    x ~ paste0(
+      '<span style="display:inline-block; text-align:left; width:35px;">', x, '%</span>',  # Add percentage value after the number 
+      '<span style="display:inline-block; width:', x * 1.5, 'px; height:10px; background-color:orange;"></span>'  # add the color bar that has width = 1.5* percent win
+    )
+  )
+),
+align = c("l", "l", "l") # change alignment of the three columns to all left aligned
+)
+```
+
+Please not that formattable will interpret "<" as "&lt;" and ">" as "&gt;" in the "x~paste0(...)" part. Therefore, we need to change these values manually in the raw html table before we can show them.
+
+```{r}
+# Render the table 
+raw_html<-as.character(table_1) # extract the raw html table
+raw_html <- gsub( "&lt;","<", raw_html)    # Escape '<'
+raw_html <- gsub("&gt;",">", raw_html)    # Escape '>'
+browsable(HTML(raw_html)) # Display the table
+```
+
+
+### Table 2: How each component affect the percentage to win of a candy and their average winning rate
+
+```{r}
+component_coef<-lm(winpercent~chocolate+
+                     fruity+caramel+
+                     peanutyalmondy+nougat+
+                     crispedricewafer+hard+
+                     bar+pluribus,
+                   data=candy_data)$coef[-1] # create the linear regression model 
+#and extract its coefficients (minus the intercept)
+component_coef<-round(component_coef,1) # round the coeficients
+components<-names(component_coef) # get the names of the columns 
+
+component_avg<-sapply(components,
+                      function(x) mean(candy_data$winpercent[candy_data[x]==1])) # used the extracted names to calculate their winning average
+component_avg<-round(component_avg,0)# round the winning average
+
+
+# define a normalizing function so that the color reflect the magnitude of
+# the value with respect to the max and min value
+normalize <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+# specify the labels of the variables
+components<-c("Chocolate","Fruit","Caramel","Peanuts & nuts","Nougat","Crispy","Hard candy","Candy bar","Multi-piece")
+# Create the table 2 that has 3 columns
+table2<-data.frame(candytype=components,
+                   `avg_win_share`=component_avg,
+                   `value_add`=component_coef)|>
+  arrange(desc(value_add))|> # arrange based on the value add to winning percent
+  rename(`CANDY TYPE`=candytype,
+         `AVG. WIN SHARE %`=avg_win_share,
+         `VALUE ADD TO WIN %`=value_add)|> # rename to match the column names of the table
+  formattable( list(
+  `VALUE ADD TO WIN %` = formatter(
+    "span",
+    style = x ~ style(
+      display = "block",
+      padding = "5px",
+      background = ifelse(
+        x > 0,
+        rgb(0.6, 0.8, 1, alpha = normalize(x)), # Light blue for positive values
+        rgb(1, 0.4, 0.4, alpha = normalize(abs(x))) # Red for negative values
+      ),
+      color = "black"
+    ),
+    x ~ ifelse(x > 0,
+               paste0("+", sprintf("%.1f", x)),
+               sprintf("%.1f", x)) # Add "+" for positive values
+  )
+),align = c("l", "r", "r")) # specify alignment to match original table
+rownames(table2)<-NULL # remove rownames of table
+table2 # display table
+```
+
+## Conclusion
+
+The data we downloaded only has 85 rows while the table in the original articles has 86 rows. Particularly, the observation for Good&Plenty is missing. Furthermore, the average winning of Peanuts, Crispy, Nougat, Multi-piece, and Hard candy differ significantly compared to the original table. This suggest that the missing observation of Good&Plenty have these components.
+
+
+
+
+
